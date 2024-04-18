@@ -1,6 +1,7 @@
 using InvariantPointAttention
 using InvariantPointAttention: get_rotation, get_translation
 using InvariantPointAttention: softmax1
+using Flux:gradient
 using Test
 
 @testset "InvariantPointAttention.jl" begin
@@ -10,7 +11,26 @@ using Test
         x = randn(4,3)
         xaug = hcat(x, zeros(4,1))
         @test InvariantPointAttention.softmax1(x, dims = 2) ≈ InvariantPointAttention.Flux.softmax(xaug, dims = 2)[:,1:end-1]
+
     end
+
+    @testset "Softmax1 custom grad" begin
+        x = randn(3,10,41,13)
+ 
+        function softmax1_no_rrule(x::AbstractArray{T}; dims = 1) where {T}
+            _zero = T(0)
+            max_ = max.(maximum(x; dims), _zero)
+            @fastmath out = exp.(x .- max_)
+            tmp = sum(out, dims = dims)
+            out ./ (tmp + exp.(-max_))
+        end
+
+        for k in 1:4
+            f(x; dims = k) = sum(softmax1(x; dims))
+            g(x; dims = k) = sum(softmax1_no_rrule(x; dims))
+            @test gradient(f, x)[1] ≈ gradient(g, x)[1]
+        end
+    end 
 
     @testset "IPAsoftmax_invariance" begin
         batch_size = 3

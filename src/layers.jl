@@ -27,7 +27,7 @@ function ∇softmax1_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) w
     end
 end
 
-function ChainRulesCore.rrule(::typeof(softmax1), x, (dims = 1))
+function ChainRulesCore.rrule(::typeof(softmax1), x; dims = 1)
     y = softmax1(x; dims)
     softmax_pullback(dy) = (NoTangent(), ∇softmax1_data(unthunk(dy), y; dims))
     return y, softmax_pullback
