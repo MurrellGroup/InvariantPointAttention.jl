@@ -288,9 +288,7 @@ function ipa_customgrad(ipa::Union{IPCrossA, IPA}, Ti::Tuple{AbstractArray,Abstr
 
     # can save one allocation here with a grad
     # Applying the attention weights to the values.
-    broadcast_att_oh = reshape(att,(1,N_head,N_frames_R,N_frames_L,:))
-    broadcast_vh = reshape(vh, (c,N_head,1,N_frames_L,:))
-    oh = reshape(sum(broadcast_att_oh .* broadcast_vh,dims = 4), c,N_head,N_frames_R,:)
+    oh = permutedims(batched_mul(permutedims(att,(2,3,1,4)), permutedims(vh,(3,1,2,4))),(2,3,1,4))
     
     broadcast_att_ohp = reshape(att,(1,N_head,1,N_frames_R,N_frames_L,:))
     broadcast_tvhp = reshape(Tvhp,(3,N_head,N_point_values,1,N_frames_L,:))
@@ -314,9 +312,7 @@ function ipa_customgrad(ipa::Union{IPCrossA, IPA}, Ti::Tuple{AbstractArray,Abstr
         ) 
 
     if pairwise
-        broadcast_zij = reshape(zij,(c_z,1,N_frames_R,N_frames_L,:))
-        broadcast_att_zij = reshape(att,(1,N_head,N_frames_R,N_frames_L,:))
-        obh = sum(broadcast_zij .* broadcast_att_zij, dims = 4)
+        obh = batched_mul(permutedims(zij,(1,3,2,4)), permutedims(att,(3,1,2,4)))
         catty = vcat(catty, reshape(obh, N_head*c_z, N_frames_R,:))
     end
 

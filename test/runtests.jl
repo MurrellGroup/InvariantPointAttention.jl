@@ -4,6 +4,7 @@ using InvariantPointAttention: softmax1
 using Zygote:gradient
 using Zygote:withgradient
 using Flux: params
+using Flux: batched_mul
 using InvariantPointAttention: T_R3, T_R3_inv, _T_R3_no_rrule, _T_R3_inv_no_rrule, diff_sum_glob, _diff_sum_glob_no_rrule, pair_diff, _pair_diff_no_rrule
 using InvariantPointAttention: L2norm, _L2norm_no_rrule, sumabs2, _sumabs2_no_rrule
 using Test
@@ -33,7 +34,34 @@ using Test
             @test gradient(f, x)[1] ≈ gradient(g, x)[1]
         end
     end  
-
+    @testset "text o-comps" begin
+        N = 10 
+        batch_size = 3
+        N_h = 8 
+        c_z = 5
+        c = 3
+        sumdrop(x; dims) = dropdims(sum(x; dims); dims)
+        N_head = N_h
+        N_frames_R = N_frames_L = N
+        
+        vh = randn(c, N_h, N, batch_size)
+        zij = randn(c_z, N, N, batch_size)
+        att = randn(N_h, N, N, batch_size)
+        
+        obh = batched_mul(permutedims(zij,(1,3,2,4)), permutedims(att,(3,1,2,4)))
+        oh = permutedims(batched_mul(permutedims(att,(2,3,1,4)), permutedims(vh,(3,1,2,4))),(2,3,1,4))
+        
+        broadcast_att_oh = reshape(att,(1,N_head,N_frames_R,N_frames_L,:))
+        broadcast_vh = reshape(vh, (c,N_head,1,N_frames_L,:))
+        oh2 = reshape(sumdrop(broadcast_att_oh .* broadcast_vh,dims = 4), c,N_head,N_frames_R,:)
+        
+        broadcast_zij = reshape(zij,(c_z,1,N_frames_R,N_frames_L,:))
+        broadcast_att_zij = reshape(att,(1,N_head,N_frames_R,N_frames_L,:))
+        obh2 = sumdrop(broadcast_zij .* broadcast_att_zij, dims = 4)
+        
+        @test obh .- obh2 < 1e-12
+        @test oh .- oh2 < 1e-12
+    end
     @testset "T_R3 custom grad" begin 
         x = randn(3,5,10,15)
         rot = get_rotation(10,15) 
