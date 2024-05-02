@@ -287,33 +287,40 @@ function ipa_customgrad(ipa::Union{IPCrossA, IPA}, Ti::Tuple{AbstractArray,Abstr
     end
 
     # can save one allocation here with a grad
-    oh = permutedims(batched_mul(permutedims(att,(2,3,1,4)), permutedims(vh,(3,1,2,4))),(2,3,1,4));
-    # This part needs a GPU kernel or a particularly clever matmul, without it the grad costs 7 gpu allocations
+    # Applying the attention weights to the values.
+    broadcast_att_oh = reshape(att,(1,N_head,N_frames_R,N_frames_L,:))
+    broadcast_vh = reshape(vh, (c,N_head,1,N_frames_L,:))
+    oh = reshape(sum(broadcast_att_oh .* broadcast_vh,dims = 4), c,N_head,N_frames_R,:)
+    
     broadcast_att_ohp = reshape(att,(1,N_head,1,N_frames_R,N_frames_L,:))
     broadcast_tvhp = reshape(Tvhp,(3,N_head,N_point_values,1,N_frames_L,:))
-    
+
     if use_softmax1
         pre_ohp_r = sum(broadcast_att_ohp.*broadcast_tvhp,dims=5)
-        # customgrad for this wouldn't save much 
         unreshaped_ohp_r = pre_ohp_r .+ (1 .- sum(broadcast_att_ohp, dims = 5)) .* reshape(translate_TiR, 3, 1, 1, N_frames_R, 1, :)
         ohp_r = reshape(unreshaped_ohp_r,3,N_head*N_point_values,N_frames_R,:)
     else
         ohp_r = reshape(sum(broadcast_att_ohp.*broadcast_tvhp,dims=5),3,N_head*N_point_values,N_frames_R,:)
     end
-    #ohp_r were in the global frame, so we put those back in the recipient local
-    ohp = T_R3_inv(ohp_r, rot_TiR, translate_TiR) 
-    normed_ohp = L2norm(ohp, eps = Typ(0.000001f0)) #Adding eps
+
+    #ohp_r were in the global frame, so we put those ba ck in the recipient local
+    ohp = _T_R3_inv_no_rrule(ohp_r, rot_TiR, translate_TiR) 
+    normed_ohp = sqrt.(sum(abs2, ohp,dims = 1) .+ Typ(0.000001f0)) #Adding eps
+
     catty = vcat(
         reshape(oh, N_head*c, N_frames_R,:),
         reshape(ohp, 3*N_head*N_point_values, N_frames_R,:),
         reshape(normed_ohp, N_head*N_point_values, N_frames_R,:)
         ) 
+
     if pairwise
-        obh = batched_mul(permutedims(zij,(1,3,2,4)), permutedims(att,(3,1,2,4)))
+        broadcast_zij = reshape(zij,(c_z,1,N_frames_R,N_frames_L,:))
+        broadcast_att_zij = reshape(att,(1,N_head,N_frames_R,N_frames_L,:))
+        obh = sum(broadcast_zij .* broadcast_att_zij, dims = 4)
         catty = vcat(catty, reshape(obh, N_head*c_z, N_frames_R,:))
     end
 
-    si = l.ipa_linear(catty) 
+    si = l.ipa_linear(catty)  
     return si 
 end
 
