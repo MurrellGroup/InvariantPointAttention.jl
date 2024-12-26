@@ -55,7 +55,7 @@ function update_frame(frames::Rigid, x::AbstractArray)
     bcds = reshape(x[:,1,:,:], 3, :)
     rotations = batchreshape(Rotation(rotmatrix_from_quat(bcds2quats(bcds))), size(x, 3), :)
     translations = Translation(x[:,2:2,:,:])
-    return (translations ∘ rotations)
+    return frames ∘ (translations ∘ rotations)
 end
 
 # Algorithm 21: Rigid from 3 points using the Gram–Schmidt process
