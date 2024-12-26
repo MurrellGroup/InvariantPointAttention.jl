@@ -3,21 +3,17 @@ module InvariantPointAttention
 using LinearAlgebra
 using Flux
 using ChainRulesCore
+using BatchedTransformations
+using UnPack
 
-include("rotational_utils.jl")
-include("grads.jl")
-include("rope.jl")
-include("layers.jl")
-include("masks.jl")
+include("utils.jl")
 
-export IPA_settings
-export IPA, IPCrossA
-export IPARoPE
-export IPAStructureModuleLayer, IPCrossAStructureModuleLayer
-export BackboneUpdate
-export right_to_left_mask
-export left_to_right_mask 
-export virtual_residues
+include("softmax1.jl")
 export softmax1
+
+include("layers.jl")
+export IPAConfig
+export IPA
+export StructureModule
 
 end

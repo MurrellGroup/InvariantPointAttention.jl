@@ -1,43 +1,54 @@
 using InvariantPointAttention
 using Test
 
-import InvariantPointAttention: get_rotation, get_translation, softmax1
-import InvariantPointAttention: T_R3, T_R3_inv, pair_diff
-import InvariantPointAttention: L2norm, sumabs2
-import Flux
+using Flux
 
+using BatchedTransformations
 using ChainRulesTestUtils
 
 @testset "InvariantPointAttention.jl" begin
 
-    @testset "IPAsoftmax_invariance" begin
-        batch_size = 3
-        framesL = 100
-        framesR = 101
-        dim = 768
-        
-        siL = randn(Float32, dim,framesL, batch_size) 
-        siR = randn(Float32, dim,framesR, batch_size)
-        
-        T_locL = (get_rotation(framesL, batch_size), get_translation(framesL, batch_size)) 
-        T_locR = (get_rotation(framesR, batch_size), get_translation(framesR, batch_size)) 
+    @testset "IPA" begin
 
-        # Get 1 global SE(3) transformation for each batch.
-        T_glob = (get_rotation(batch_size), get_translation(batch_size))
-        T_GlobL = (stack([T_glob[1] for i in 1:framesL],dims = 3), stack([T_glob[2] for i in 1:framesL], dims=3))
-        T_GlobR = (stack([T_glob[1] for i in 1:framesR],dims = 3), stack([T_glob[2] for i in 1:framesR], dims=3))
-        
-        T_newL = InvariantPointAttention.T_T(T_GlobL,T_locL)
-        T_newR = InvariantPointAttention.T_T(T_GlobR,T_locR)
-        
-        ipa = IPAStructureModuleLayer(IPA_settings(dim; use_softmax1 = true)) 
-        
-        T_loc, si_loc = ipa(T_locL,siL, T_locR, siR)
-        T_glob, si_glob = ipa(T_newL, siL, T_newR, siR)
-        @test si_glob ≈ si_loc
+        @testset for (softmax, n_dims_z, use_mask) in Iterators.product([softmax1, softmax], [0, 16], [true, false])
+
+            n_dims_s = 256
+            n_frames_Q = 20
+            n_frames_K = 21
+            batch_size = 3
+
+            s_Q = randn(Float32, n_dims_s, n_frames_Q, batch_size)
+            s_K = randn(Float32, n_dims_s, n_frames_K, batch_size)
+            frames_Q = rand(Float32, Rigid, 3, (n_frames_Q, batch_size))
+            frames_K = rand(Float32, Rigid, 3, (n_frames_K, batch_size))
+
+            global_frames = rand(Float32, Rigid, 3, (1, batch_size))
+            frames_rotated_Q = batchrepeat(global_frames, n_frames_Q) ∘ frames_Q
+            frames_rotated_K = batchrepeat(global_frames, n_frames_K) ∘ frames_K
+
+            ipa = StructureModule(IPAConfig(; n_dims_s, n_dims_z, softmax))
+
+            @testset "cross" begin
+                z = iszero(n_dims_z) ? nothing : randn(Float32, n_dims_z, n_frames_Q, n_frames_K, batch_size)
+                mask = use_mask ? .!rand(Bool, n_frames_Q, n_frames_K, batch_size) .* -Inf32 : nothing
+                new_frames_Q,  new_s_Q  = ipa(frames_Q, s_Q, frames_K, s_K, z; mask)
+                new_frames_rotated_Q, new_s_rotated_Q = ipa(frames_rotated_Q, s_Q, frames_rotated_K, s_K, z; mask)
+                @test new_s_rotated_Q ≈ new_s_Q
+            end
+
+            @testset "self" begin
+                z = iszero(n_dims_z) ? nothing : randn(Float32, n_dims_z, n_frames_Q, n_frames_Q, batch_size)
+                mask = use_mask ? .!rand(Bool, n_frames_Q, n_frames_Q, batch_size) .* -Inf32 : nothing
+                new_frames_Q,  new_s_Q  = ipa(frames_Q, s_Q, frames_Q, s_Q, z; mask)
+                new_frames_rotated_Q, new_s_rotated_Q = ipa(frames_rotated_Q, s_Q, frames_rotated_Q, s_Q, z; mask)
+                @test new_s_rotated_Q ≈ new_s_Q
+            end
+
+        end
+
     end
 
-    @testset "IPACache" begin
+    #=@testset "IPACache" begin
         dims = 8
         c_z = 2
         settings = IPA_settings(dims; c_z)
@@ -95,10 +106,10 @@ using ChainRulesTestUtils
             push!(siRs, si)
         end
         @test cat(siRs..., dims = 2) ≈ ipa(TiL, siL, TiR, siR; zij, mask = right_to_left_mask(6))
-    end
+    end=#
 
 
-    @testset "IPACache_softmax1" begin
+    #=@testset "IPACache_softmax1" begin
         dims = 8
         c_z = 2
         settings = IPA_settings(dims; c_z, use_softmax1 = true)
@@ -155,52 +166,21 @@ using ChainRulesTestUtils
             push!(siRs, si)
         end
         @test cat(siRs..., dims = 2) ≈ ipa(TiL, siL, TiR, siR; zij, mask = right_to_left_mask(10))
-    end
+    end=#
 
+    # Check if softmax1 is consistent with softmax, when adding an additional zero logit
     @testset "Softmax1" begin
-        #Check if softmax1 is consistent with softmax, when adding an additional zero logit
         x = randn(4,3)
         xaug = hcat(x, zeros(4,1))
-        @test softmax1(x, dims = 2) ≈ Flux.softmax(xaug, dims = 2)[:,1:end-1]
+        @test softmax1(x, dims=2) ≈ Flux.softmax(xaug, dims=2)[:,1:end-1]
     end
 
     @testset "softmax1 rrule" begin
         x = randn(2,3,4)
-
         foreach(i -> test_rrule(softmax1, x; fkwargs=(; dims=i)), 1:3)
     end  
 
-    @testset "T_R3 rrule" begin 
-        x = randn(Float64, 3, 2, 1, 2)
-        R = get_rotation(Float64, 1, 2)
-        t = get_translation(Float64, 1, 2)
-        test_rrule(T_R3, x, R, t)
-    end
-
-    @testset "T_R3_inv rrule" begin 
-        x = randn(Float64, 3, 2, 1, 2)
-        R = get_rotation(Float64, 1, 2) 
-        t = get_translation(Float64, 1, 2)
-        test_rrule(T_R3_inv, x, R, t)
-    end
-
-    @testset "sumabs2 rrule" begin
-        x = rand(2,3,4)
-        foreach(i -> test_rrule(sumabs2, x; fkwargs=(; dims=i)), 1:3)
-    end
-
-    @testset "L2norm rrule" begin 
-        x = randn(2,3,4,5)
-        foreach(i -> test_rrule(L2norm, x; fkwargs=(; dims=i)), 1:3)
-    end
-
-    @testset "pair_diff rrule" begin 
-        x = randn(1,4,2)
-        y = randn(1,3,2)
-        test_rrule(pair_diff, x, y; fkwargs=(; dims=2))
-    end
-
-    @testset "ipa_customgrad" begin
+    #=@testset "ipa_customgrad" begin
         batch_size = 3
         framesL = 10
         framesR = 10
@@ -231,6 +211,6 @@ using ChainRulesTestUtils
         end
         #@show lz, lz2
         @test abs.(lz - lz2) < 1f-5
-    end
+    end=#
 
 end
