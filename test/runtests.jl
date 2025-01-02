@@ -8,7 +8,7 @@ using ChainRulesTestUtils
 
 @testset "InvariantPointAttention.jl" begin
 
-    @testset "IPA" begin
+    @testset "invariance" begin
 
         @testset for (softmax, n_dims_z, use_mask) in Iterators.product([softmax1, softmax], [0, 16], [true, false])
 

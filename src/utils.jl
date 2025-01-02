@@ -81,3 +81,5 @@ function get_rigid(backbone::AbstractArray{<:Real,3})
     end
     return Translation(t) ∘ Rotation(R)
 end
+
+get_rigid((R, t)::Tuple{AbstractArray, AbstractArray}) = Translation(t) ∘ Rotation(R)

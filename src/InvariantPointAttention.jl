@@ -7,6 +7,7 @@ using BatchedTransformations
 using UnPack
 
 include("utils.jl")
+export get_rigid
 
 include("softmax1.jl")
 export softmax1

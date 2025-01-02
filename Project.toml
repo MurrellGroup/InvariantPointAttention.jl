@@ -8,14 +8,16 @@ BatchedTransformations = "8ba27c4b-52b5-4b10-bc66-a4fda05aa11b"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+PositionalEmbeddings = "d504d84d-5e64-4f13-be9b-c14c41279bd1"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
-BatchedTransformations = "0.5.3"
+BatchedTransformations = "0.5.5"
 ChainRulesCore = "1"
 Flux = "0.16"
 LinearAlgebra = "1"
-UnPack = "1.0.2"
+PositionalEmbeddings = "0.6.2"
+UnPack = "1"
 julia = "1.10"
 
 [extras]
