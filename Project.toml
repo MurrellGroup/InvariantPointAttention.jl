@@ -1,7 +1,7 @@
 name = "InvariantPointAttention"
 uuid = "814a5788-1061-474f-a71f-873f087d5d12"
 authors = ["Lukas Billera and Ben Murrell <benjamin.murrell@ki.se>"]
-version = "0.1.0"
+version = "0.1.2"
 
 [deps]
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
