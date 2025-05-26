@@ -139,7 +139,7 @@ function (ipa::Union{IPCrossA, IPA})(
     TiL::Tuple{AbstractArray, AbstractArray}, siL::AbstractArray,
     TiR::Tuple{AbstractArray, AbstractArray}, siR::AbstractArray;
     zij = nothing, mask = 0, customgrad = true, 
-    rope::Union{IPARoPE, Nothing} = nothing, chain_diffs = 1, show_warnings = true
+    rope::Union{IPARoPE, Nothing} = nothing, chain_diffs = 1, show_warnings = false, old_eucdists = false
 )
     if mask == 0 || siL != siR || TiL != TiR
         if show_warnings
@@ -148,7 +148,7 @@ function (ipa::Union{IPCrossA, IPA})(
         customgrad = false 
     end
 
-    if customgrad  
+    if customgrad  && old_eucdists
         return ipa_customgrad(ipa, TiL, siL, zij, mask, rope = rope, chain_diffs = chain_diffs)
     end
 
@@ -162,6 +162,8 @@ function (ipa::Union{IPCrossA, IPA})(
         size(mask,2) == size(siL, 2) || throw(DimensionMismatch("mask and siL size mismatch"))
     end
     
+    batch = size(siL, 3) 
+
     # Get relevant parameters from our ipa struct.
     l = ipa.layers
     dims, c, N_head, N_query_points, N_point_values, c_z, Typ, pairwise = ipa.settings
@@ -175,7 +177,7 @@ function (ipa::Union{IPCrossA, IPA})(
     rot_TiR, translate_TiR = TiR
     
     N_frames_L = size(siL,2)
-    N_frames_R = size(siR,2)
+    N_frames_R = size(siR,2)    
 
     gamma_h = softplus(clamp.(l.gamma_h,Typ(-100), Typ(100))) #Clamping
 
@@ -213,9 +215,17 @@ function (ipa::Union{IPCrossA, IPA})(
     Tkhp = reshape(T_R3(khp, rot_TiL,translate_TiL),3,N_head,N_query_points,N_frames_L,:)
     Tvhp = T_R3(vhp, rot_TiL, translate_TiL)
 
-    diffs_glob = Flux.unsqueeze(Tqhp, dims = 5) .- Flux.unsqueeze(Tkhp, dims = 4)
-    sum_norms_glob = reshape(sum(abs2, diffs_glob, dims = [1,3]),N_head,N_frames_R,N_frames_L,:) #Sum over points for each head
-    
+    if old_eucdists # BREAKING: THIS PATH IS USED IN RUNTESTS
+        diffs_glob = Flux.unsqueeze(Tqhp, dims = 5) .- Flux.unsqueeze(Tkhp, dims = 4)
+        sum_norms_glob = reshape(sum(abs2, diffs_glob, dims = [1,3]),N_head,N_frames_R,N_frames_L,:) #Sum over points for each head
+    else 
+        PTqhp = permutedims(Tqhp, (4,1,3,2,5)) # NR, 3, Nqp, Nh, batch_size 
+        PTkhp = permutedims(Tkhp, (1,3,4,2,5)) # 3, Nqp, NL, Nh, batch_size
+        RPTqhp = reshape(PTqhp, N_frames_R, 3*N_query_points, N_head*batch)
+        RPTkhp = reshape(PTkhp, 3*N_query_points, N_frames_L, N_head*batch) 
+        sum_norms_glob = permutedims(reshape(PairwiseEuclideans(RPTqhp, RPTkhp), N_frames_R, N_frames_L, N_head, batch), (3,1,2,4)) 
+    end
+
 
     att_arg = reshape(dim_scale .* qhTkh .- w_C/2 .* gamma_h .* sum_norms_glob,(N_head,N_frames_R,N_frames_L, :))
 

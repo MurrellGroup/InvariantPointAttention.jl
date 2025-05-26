@@ -10,6 +10,56 @@ using ChainRulesTestUtils
 
 @testset "InvariantPointAttention.jl" begin
 
+    @testset "old_eucdists vs new_eucdists" begin
+        # Test parameters
+        N_head = 4
+        N_query_points = 2
+        N_point_values = 4
+        N_frames_L = 8
+        N_frames_R = 6
+        batch_size = 2
+        dims = 64
+        c = 16
+
+        # Create IPA settings
+        settings = IPA_settings(
+            dims,
+            c = c,
+            N_head = N_head,
+            N_query_points = N_query_points,
+            N_point_values = N_point_values,
+            c_z = 0,
+            Typ = Float32,
+            use_softmax1 = false,
+            scaling_qk = :default,
+        )
+
+        # Create IPA layer
+        ipa = IPCrossA(settings)
+
+        # Create test data
+        TiL = (
+            randn(Float32, 3, 3, N_frames_L, batch_size),  # rotation matrices
+            randn(Float32, 3, 1, N_frames_L, batch_size)   # translation vectors
+        )
+        TiR = (
+            randn(Float32, 3, 3, N_frames_R, batch_size),  # rotation matrices  
+            randn(Float32, 3, 1, N_frames_R, batch_size)   # translation vectors
+        )
+        siL = randn(Float32, dims, N_frames_L, batch_size)
+        siR = randn(Float32, dims, N_frames_R, batch_size)
+
+        # Test with old_eucdists = true
+        result_old = ipa(TiL, siL, TiR, siR; old_eucdists = true, customgrad = false)
+
+        # Test with old_eucdists = false  
+        result_new = ipa(TiL, siL, TiR, siR; old_eucdists = false, customgrad = false)
+
+        # Check that results are approximately equal
+        @test isapprox(result_old, result_new, rtol=1e-5, atol=1e-6)
+        @test size(result_old) == size(result_new)
+    end
+
     @testset "Batched rope indexing" begin
         dims = 8
         settings = IPA_settings(dims)

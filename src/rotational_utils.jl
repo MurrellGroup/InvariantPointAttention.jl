@@ -4,6 +4,13 @@ function bcds2quats(bcd::AbstractMatrix{T}, a::T=T(1)) where T<:Real
     norms = sqrt.(a .+ sum(abs2, bcd, dims=1))
     return vcat(a ./ norms, bcd ./ norms)
 end
+# Fast batched pairwise Euclidean distances between rows of x and columns of y
+function PairwiseEuclideans(x,y)
+    A_sqnorms = sum(abs2, x, dims=2)
+    B_sqnorms = sum(abs2, y, dims=1)
+    AB_dots = batched_mul(x,y)
+    return A_sqnorms .- 2 .* AB_dots .+ B_sqnorms
+end
 
 # Takes a 4xN matrix of unit quaternions and returns a 3x3xN array of rotation matrices.
 function rotmatrix_from_quat(q::AbstractMatrix{<:Real})
